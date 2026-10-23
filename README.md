@@ -1,347 +1,279 @@
-# rpy
+# rpy — Reiko's Python
 
-`rpy` is a small Python environment manager written in Go.
+`rpy` is a Python runtime and environment manager written in Go. It builds
+CPython from source, manages local and shared virtual environments, and runs
+commands and `pip` in the environment selected for each project.
 
-I am trying to glue together the subset of Python workflow I use. And I wanted to learn Go.
+Part of **Reiko Studio**.
 
-> [!NOTE]
-> `rpy` stands for "Reiko's Python"
+It brings together source builds like [pyenv](https://github.com/pyenv/pyenv),
+project-local environments like [uv](https://docs.astral.sh/uv/), and named
+environments shared across projects like
+[Anaconda](https://www.anaconda.com/docs/getting-started/working-with-conda/environments).
+It uses ordinary Python virtual environments and `pip`, with shell integration
+for activation.
 
-## Why
+It was built around the way its creator, [leogabac](https://github.com/leogabac),
+uses Python for research and day-to-day projects.
+Some projects need their own dependencies; others use the same scientific
+Python setup across several repositories. Keeping a separate environment for
+each of those repositories means installing and maintaining the same packages
+several times.
 
-This project came out of a pretty ordinary frustration: my Python setup had too many moving parts.
-For a long time I used `pyenv` for Python versions, `venv` or `virtualenv` for environments, and `pip` for packages.
-That works, but it means one workflow is split across several tools, each with its own rules and quirks.
+With `rpy`, you can choose either approach for each project. The workflow stays
+the same: choose a Python interpreter, create an environment, and use it to
+install packages and run your code.
 
-`conda` solves more of that in one place, but it is heavier than I want for day-to-day work.
-It is still useful on HPC systems, where you often do not get to choose the machine.
-`uv` is close to ideal in speed and ergonomics, but it does not yet give me the shared-environment pattern I want for some research projects.
+## Features
 
-So `rpy` is my attempt to build a smaller tool around the pieces I use.
+- Managed Python runtimes: `~/.rpy/pythons/<version>`
+- Local project environments: `./.venv`
+- Shared named environments: `~/.rpy/envs/<name>`
+- Shell activation and automatic activation when entering a project
 
-## What `rpy` does
+Each project uses one environment at a time. By default, that is the `.venv`
+in the project directory. When you select a shared environment, `rpy` records
+its name in a small `.rpy-env` file, so you do not need to choose it again each
+time you return to the project.
 
-`rpy` currently manages three things:
-
-1. Python runtimes under `~/.rpy/pythons/<version>`
-2. A local project environment at `./.venv`
-3. Shared named environments under `~/.rpy/envs/<name>`
-
-Each project uses exactly one environment at a time:
-
-- `local`: `./.venv`
-- `shared:<name>`: `~/.rpy/envs/<name>`
-
-The project selection is stored in a small `.rpy-env` file when you choose a shared env.
+A shared environment is useful when several projects need the same packages.
+Changes to it are visible to all projects that use it, so a local `.venv` is a
+better fit when dependencies need to evolve independently.
 
 ## Requirements
 
 This tool is deliberately Linux-first.
 
-Managed Python installs are built from upstream CPython source instead of relying on interpreter discovery magic, prebuilt embedded runtimes, or trying to install system packages for you.
+Building `rpy` requires Go 1.26.2 or newer. Managed Python installs are built
+from upstream CPython source, so you also need the system build dependencies
+for the Python version you want to install.
 
-That means `rpy` expects you to already have system build dependencies.
+**For Ubuntu:**
+```sh
+sudo apt update; sudo apt install make build-essential libssl-dev zlib1g-dev \
+libbz2-dev libreadline-dev libsqlite3-dev curl git \
+libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev
+```
+
+**For Fedora 22 and above:**
+```sh
+dnf install make gcc patch zlib-devel bzip2 bzip2-devel readline-devel sqlite sqlite-devel openssl-devel tk-devel libffi-devel xz-devel libuuid-devel gdbm-libs libnsl2
+```
+
+**For Arch:**
+```sh
+sudo pacman -S --needed base-devel openssl zlib xz tk zstd
+```
 
 ## Install
 
-Build the binary from the repo root:
+Build from the repository root and put the binary on your `PATH`:
 
 ```sh
 go build -o rpy .
+mkdir -p ~/.local/bin
+install -m 0755 rpy ~/.local/bin/rpy
 ```
 
-You can then move `rpy` somewhere on your `PATH`, for example:
+Make sure `~/.local/bin` is on your `PATH`, so you can call `rpy` from any
+project directory. The Go compiler is needed to build the binary; the resulting
+executable can then be used directly.
+
+## A First Environment
+
+For a first project, you can use a Python interpreter that is already installed.
+From the project directory, create a local environment:
 
 ```sh
-install -m 0755 rpy ~/.local/bin/rpy
+rpy env create --python python3
+```
+
+This creates `./.venv` using `python3` from your `PATH`. You can now install a
+package and run Python inside that environment:
+
+```sh
+rpy pip install numpy
+rpy run python -c "import numpy; print(numpy.__version__)"
+```
+
+Both `rpy pip` and `rpy run` use the environment selected for the project,
+so these commands work without activating it in your shell.
+
+### Sharing an environment
+
+Suppose several research projects use the same NumPy, pandas, and Matplotlib
+setup. You can create a named environment once, then select it for each project:
+
+```sh
+rpy env create research --python python3
+rpy env use research
+rpy pip install numpy pandas matplotlib
+```
+
+In another project directory, select the same environment:
+
+```sh
+cd ../other-project
+rpy env use research
+rpy run python -c "import numpy; print(numpy.__version__)"
+```
+
+Both projects now use the packages installed in `research`. Each selection is
+saved in that project's `.rpy-env` file. To return a project to its own `.venv`,
+run `rpy env use local`; create the local environment first if it does not exist.
+
+To keep the selection file out of version control, add it to `.gitignore`:
+
+```sh
+printf '\n.rpy-env\n' >> .gitignore
 ```
 
 ## Shell Integration
 
-`rpy` cannot directly mutate your current shell session, so activation commands are normally printed as shell snippets.
+If you prefer to call `python` and other installed commands directly, shell
+integration handles activation for you. Add the appropriate line to your shell
+startup file, then reload it or open a new shell:
 
-For one-off use:
+```sh
+# ~/.bashrc
+eval "$(rpy shell-init --shell bash)"
+```
+
+```sh
+# ~/.zshrc
+eval "$(rpy shell-init --shell zsh)"
+```
+
+```fish
+# ~/.config/fish/config.fish
+rpy shell-init --shell fish | source
+```
+
+With integration loaded, `rpy env activate` updates the current shell to use
+the selected environment. Entering a project directory also activates its
+environment automatically.
+
+```sh
+rpy env activate
+rpy env use research --activate
+```
+
+`rpy env use <name>` saves the project selection. Adding `--activate` instead
+makes a temporary selection for the current shell without writing `.rpy-env`.
+
+Without shell integration, `rpy env activate` prints an activation command.
+For a one-off activation in bash or zsh, evaluate that output:
 
 ```sh
 eval "$(rpy env activate)"
 ```
 
-For a usable interactive workflow, load shell integration once in your shell startup.
+## Python Runtimes
 
-For `bash`:
-
-```sh
-eval "$(rpy shell-init --shell bash)"
-```
-
-For `zsh`:
-
-```sh
-eval "$(rpy shell-init --shell zsh)"
-```
-
-For `fish`:
-
-```fish
-rpy shell-init --shell fish | source
-```
-
-With shell integration loaded:
-
-- `rpy env activate` activates the current project environment in-place
-- `rpy env use <name> --activate` switches and activates in one step
-- entering a project directory auto-activates the environment selected for that project
-
-To see the line you should add to your startup file:
-
-```sh
-rpy shell-init --shell bash --install
-```
-
-## Python Runtime Installation
-
-Install a managed Python runtime:
+Install a managed runtime from upstream CPython source:
 
 ```sh
 rpy py install 3.12.3
-```
-
-This downloads `Python-3.12.3.tgz` from `python.org`, then runs:
-
-- `./configure`
-- `make`
-- `make install`
-
-The installed runtime ends up under:
-
-```sh
-~/.rpy/pythons/3.12.3
-```
-
-List known interpreters:
-
-```sh
-rpy py list
-```
-
-Resolve one interpreter:
-
-```sh
-rpy py which 3.12.3
-rpy py which python3
-rpy py which /usr/bin/python3
-```
-
-Remove a managed runtime:
-
-```sh
-rpy py remove 3.12.3
-```
-
-## Local Environment Workflow
-
-Create a local project environment:
-
-```sh
-rpy env create
-```
-
-Choose the Python explicitly:
-
-```sh
 rpy env create --python 3.12.3
+```
+
+Installation downloads the source from `python.org`, then runs `./configure`,
+`make`, and `make install`. The installed interpreter lives under
+`~/.rpy/pythons/3.12.3`. Building Python can take a while and requires the system
+libraries listed above.
+
+You do not need a managed runtime to use `rpy`. When creating an environment,
+`--python` also accepts an interpreter on `PATH` or an explicit path:
+
+```sh
 rpy env create --python python3
 rpy env create --python /usr/bin/python3
 ```
 
-Recreate an existing local environment:
+List, locate, or remove runtimes:
 
 ```sh
-rpy env create --force
+rpy py list
+rpy py which 3.12.3
+rpy py which python3
+rpy py remove 3.12.3
 ```
 
-Remove it:
+## Manage Environments
+
+Create a shared environment and select it in one step:
 
 ```sh
-rpy env remove local
+rpy env create research --python 3.12.3 --use
 ```
 
-By default, if no shared environment is selected, the project uses `./.venv`.
-
-## Shared Environment Workflow
-
-Create a shared environment:
+If you need to recreate an environment, use `--force`. This replaces the
+existing environment, including its installed packages:
 
 ```sh
-rpy env create glass
+rpy env create --python 3.12.3 --force
+rpy env create research --python 3.12.3 --force
 ```
 
-Create it with a specific interpreter:
-
-```sh
-rpy env create glass --python 3.12.3
-```
-
-Create it and immediately select it for the current project:
-
-```sh
-rpy env create glass --python 3.12.3 --use
-```
-
-Recreate an existing shared environment:
-
-```sh
-rpy env create glass --python 3.12.3 --force
-```
-
-List the local and shared environments visible to the current project:
-
-```sh
-rpy env list
-```
-
-Switch the current project to a shared environment:
-
-```sh
-rpy env use glass
-```
-
-Switch back to the local environment:
-
-```sh
-rpy env use local
-```
-
-Switch and activate in one step:
-
-```sh
-rpy env use glass --activate
-rpy env use local --activate
-```
-
-`rpy env use <name>` persists the selection for the project by writing `.rpy-env`.
-`rpy env use <name> --activate` is different: it is temporary for the current shell session and does not write `.rpy-env`.
-
-Remove a shared environment:
-
-```sh
-rpy env remove glass
-```
-
-## Inspect the Current Environment
-
-Show what the current project is using:
+To check which environment a project is using, `rpy env info` shows its
+metadata and `rpy env path` prints its directory. `rpy env list` shows the local
+and shared environments available to the project:
 
 ```sh
 rpy env info
-```
-
-Print the current environment root path:
-
-```sh
 rpy env path
+rpy env list
 ```
 
-Print the activation command:
+When an environment is no longer needed, remove it by name. Use `local` for
+the current project's `.venv`:
 
 ```sh
-rpy env activate
+rpy env remove local
+rpy env remove research
 ```
 
-Print only the activation script path:
+## Run Commands and Manage Packages
 
-```sh
-rpy env activate --path
-```
-
-## Run Commands Inside the Current Environment
-
-Run a command with the environment on `PATH`:
+`rpy run` puts the selected environment on `PATH` for a command. This is useful
+for scripts and tools you want to run without changing your current shell:
 
 ```sh
 rpy run python --version
 rpy run pytest
 ```
 
-Run `pip` through the current environment interpreter:
+Package installation goes through the environment's Python interpreter:
 
 ```sh
-rpy pip install numpy
+rpy pip install -r requirements.txt
 rpy pip list
 rpy pip freeze
 ```
 
-There are also convenience subcommands:
+`rpy pip` runs `pip` through the selected environment's interpreter.
+`rpy freeze` is a shortcut for `rpy pip freeze`.
 
-```sh
-rpy pip install requests
-rpy pip list
-rpy freeze
-```
+## Diagnostics
 
-## Example Workflows
-
-### Personal Project With Local `.venv`
-
-```sh
-rpy py install 3.12.3
-rpy env create --python 3.12.3
-rpy env use local --activate
-rpy pip install -U pip
-rpy pip install -r requirements.txt
-rpy run python --version
-```
-
-### Shared Research Environment Across Multiple Projects
-
-Create the shared environment once:
-
-```sh
-rpy py install 3.12.3
-rpy env create research --python 3.12.3
-```
-
-Use it inside one project:
-
-```sh
-rpy env use research --activate
-rpy pip install numpy pandas matplotlib
-```
-
-Use it inside another project:
-
-```sh
-cd ../other-project
-rpy env use research --activate
-```
-
-## Doctor
-
-Run the built-in checks:
+If something is not working as expected, start with the built-in checks:
 
 ```sh
 rpy doctor
 ```
 
-It currently checks:
-
-- home directory resolution
-- `~/.rpy` availability
-- Python on `PATH`
-- whether shell integration is detected in the current shell
-- whether the current project's selected environment exists
-- whether `make` and `cc` are available for Python source builds
+This checks storage, Python availability, shell integration, the selected
+environment, and source-build tools (`make` and `cc`). It can help identify a
+missing environment or an incomplete local setup.
 
 ## Current Limitations
 
-This is still an MVP.
+`rpy` currently focuses on Python runtimes and environment selection. Packages
+are managed through `pip`; there is no dependency sync workflow, lockfile, or
+environment spec format yet.
 
-Notably:
+- Linux-first, with Python built from source.
+- System build dependencies must be installed separately.
+- Removing a shared environment does not check other projects for references.
 
-- there is no full dependency sync workflow yet
-- there is no lockfile or environment spec format yet
-- shared env removal does not scan other projects for stale references
-- Python installation is Linux-first and source-build oriented
-- build dependencies are documented, not managed
-
-That is intentional for now. The goal is a small workflow tool.
+[MIT license](LICENSE)
