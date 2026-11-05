@@ -60,9 +60,10 @@ rpy() {
         command rpy env use "${_rpy_use_args[@]}" --activate
         return $?
       fi
+      unset RPY_ENV_PROJECT
       export RPY_ENV_SELECTION="${_rpy_use_args[0]}"
       local _rpy_activate_path
-      _rpy_activate_path="$(command rpy env activate --shell bash --path)" || return $?
+      _rpy_activate_path="$(command rpy env activate --shell bash --path --current)" || return $?
       if [ -n "${VIRTUAL_ENV:-}" ] && [ "${VIRTUAL_ENV}" != "$(dirname "$(dirname "$_rpy_activate_path")")" ]; then
         deactivate >/dev/null 2>&1 || true
       fi
@@ -76,15 +77,16 @@ rpy() {
     return $?
   fi
 
-  if [ "$#" -ge 2 ] && [ "$1" = "env" ] && [ "$2" = "activate" ]; then
-    shift 2
-    local _rpy_activate_path
-    _rpy_activate_path="$(command rpy env activate --shell bash --path "$@")" || return $?
-    if [ -n "${VIRTUAL_ENV:-}" ] && [ "${VIRTUAL_ENV}" != "$(dirname "$(dirname "$_rpy_activate_path")")" ]; then
-      deactivate >/dev/null 2>&1 || true
-    fi
-    . "$_rpy_activate_path"
-    export RPY_AUTO_VENV="$(dirname "$(dirname "$_rpy_activate_path")")"
+  if [ "$#" -ge 2 ] && [ "$1" = "env" ] && { [ "$2" = "activate" ] || [ "$2" = "register" ]; }; then
+    local arg
+    for arg in "${@:3}"; do
+      case "$arg" in
+        -h|--help|--help=*|--path|--path=*) command rpy "$@"; return $? ;;
+      esac
+    done
+    local _rpy_snippet
+    _rpy_snippet="$(command rpy "$@" --shell bash)" || return $?
+    eval "$_rpy_snippet"
     return $?
   fi
 
@@ -93,7 +95,7 @@ rpy() {
 
 _rpy_autoenv() {
   local _rpy_activate_path=""
-  _rpy_activate_path="$(command rpy env activate --shell bash --path 2>/dev/null || true)"
+  _rpy_activate_path="$(command rpy env activate --shell bash --path --current 2>/dev/null || true)"
 
   if [ -n "${RPY_AUTO_VENV:-}" ] && [ "${VIRTUAL_ENV:-}" = "$RPY_AUTO_VENV" ] && [ -z "$_rpy_activate_path" ]; then
     deactivate >/dev/null 2>&1 || true
@@ -143,8 +145,9 @@ function rpy
                 command rpy env use $passthrough --activate
                 return $status
             end
+            set -e RPY_ENV_PROJECT
             set -gx RPY_ENV_SELECTION "$passthrough[1]"
-            set -l activate_path (command rpy env activate --shell fish --path)
+            set -l activate_path (command rpy env activate --shell fish --path --current)
             or return $status
             set -l activate_root (dirname (dirname "$activate_path"))
             if set -q VIRTUAL_ENV; and test "$VIRTUAL_ENV" != "$activate_root"
@@ -161,24 +164,27 @@ function rpy
         return $status
     end
 
-    if test (count $argv) -ge 2; and test "$argv[1]" = "env"; and test "$argv[2]" = "activate"
-        set -l passthrough $argv[3..-1]
-        set -l activate_path (command rpy env activate --shell fish --path $passthrough)
-        or return $status
-        set -l activate_root (dirname (dirname "$activate_path"))
-        if set -q VIRTUAL_ENV; and test "$VIRTUAL_ENV" != "$activate_root"
-            deactivate >/dev/null 2>/dev/null
+    if test (count $argv) -ge 2; and test "$argv[1]" = "env"
+        if contains -- "$argv[2]" activate register
+            for arg in $argv[3..-1]
+                switch "$arg"
+                    case -h --help '--help=*' --path '--path=*'
+                        command rpy $argv
+                        return $status
+                end
+            end
+            set -l snippet (command rpy $argv --shell fish)
+            or return $status
+            eval "$snippet"
+            return $status
         end
-        source "$activate_path"
-        set -gx RPY_AUTO_VENV "$activate_root"
-        return $status
     end
 
     command rpy $argv
 end
 
 function __rpy_autoenv --on-variable PWD
-    set -l activate_path (command rpy env activate --shell fish --path 2>/dev/null)
+    set -l activate_path (command rpy env activate --shell fish --path --current 2>/dev/null)
 
     if set -q RPY_AUTO_VENV; and test "$VIRTUAL_ENV" = "$RPY_AUTO_VENV"; and test -z "$activate_path"
         deactivate >/dev/null 2>/dev/null
@@ -223,9 +229,10 @@ function rpy() {
         command rpy env use "${_rpy_use_args[@]}" --activate
         return $?
       fi
+      unset RPY_ENV_PROJECT
       export RPY_ENV_SELECTION="${_rpy_use_args[0]}"
       local _rpy_activate_path
-      _rpy_activate_path="$(command rpy env activate --shell zsh --path)" || return $?
+      _rpy_activate_path="$(command rpy env activate --shell zsh --path --current)" || return $?
       if [ -n "${VIRTUAL_ENV:-}" ] && [ "${VIRTUAL_ENV}" != "$(dirname "$(dirname "$_rpy_activate_path")")" ]; then
         deactivate >/dev/null 2>&1 || true
       fi
@@ -239,15 +246,16 @@ function rpy() {
     return $?
   fi
 
-  if [ "$#" -ge 2 ] && [ "$1" = "env" ] && [ "$2" = "activate" ]; then
-    shift 2
-    local _rpy_activate_path
-    _rpy_activate_path="$(command rpy env activate --shell zsh --path "$@")" || return $?
-    if [ -n "${VIRTUAL_ENV:-}" ] && [ "${VIRTUAL_ENV}" != "$(dirname "$(dirname "$_rpy_activate_path")")" ]; then
-      deactivate >/dev/null 2>&1 || true
-    fi
-    . "$_rpy_activate_path"
-    export RPY_AUTO_VENV="$(dirname "$(dirname "$_rpy_activate_path")")"
+  if [ "$#" -ge 2 ] && [ "$1" = "env" ] && { [ "$2" = "activate" ] || [ "$2" = "register" ]; }; then
+    local arg
+    for arg in "${@:3}"; do
+      case "$arg" in
+        -h|--help|--help=*|--path|--path=*) command rpy "$@"; return $? ;;
+      esac
+    done
+    local _rpy_snippet
+    _rpy_snippet="$(command rpy "$@" --shell zsh)" || return $?
+    eval "$_rpy_snippet"
     return $?
   fi
 
@@ -256,7 +264,7 @@ function rpy() {
 
 _rpy_autoenv() {
   local _rpy_activate_path=""
-  _rpy_activate_path="$(command rpy env activate --shell zsh --path 2>/dev/null || true)"
+  _rpy_activate_path="$(command rpy env activate --shell zsh --path --current 2>/dev/null || true)"
 
   if [ -n "${RPY_AUTO_VENV:-}" ] && [ "${VIRTUAL_ENV:-}" = "$RPY_AUTO_VENV" ] && [ -z "$_rpy_activate_path" ]; then
     deactivate >/dev/null 2>&1 || true

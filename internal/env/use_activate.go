@@ -3,43 +3,64 @@ package env
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 func PrintUseAndActivateCommand(selection, shell string) error {
-	command, err := UseAndActivateCommand(selection, shell)
-	if err != nil {
-		return err
+	command, err := SelectionActivationCommand(selection, shell, true)
+	if err == nil {
+		fmt.Println(command)
 	}
-
-	fmt.Println(command)
-	return nil
+	return err
 }
 
-func UseAndActivateCommand(selection, shell string) (string, error) {
-	info, shellValue, err := selectionActivationInfo(selection)
+func SelectionActivationCommand(selection, shell string, temporary bool) (string, error) {
+	info, name, err := selectionActivationInfo(selection)
 	if err != nil {
 		return "", err
 	}
+	return selectionSnippet(info, name, shell, temporary)
+}
 
-	script, err := activationScriptPathForSelection(info, shell)
+func selectionSnippet(info Info, name, shell string, temporary bool) (string, error) {
+	activation, err := ActivateCommand(info, shell)
 	if err != nil {
 		return "", err
 	}
-
-	root := info.Root
 	normalized := normalizeShell(shell)
-	switch normalized {
-	case "fish":
-		return fmt.Sprintf(
-			"set -gx %s %s; source %q; set -gx RPY_AUTO_VENV %q",
-			shellSelectionEnv, shellValue, script, root,
-		), nil
-	default:
-		return fmt.Sprintf(
-			"export %s=%q\nsource %q\nexport RPY_AUTO_VENV=%q",
-			shellSelectionEnv, shellValue, script, root,
-		), nil
+	if normalized != "fish" && normalized != "sh" && normalized != "zsh" {
+		return activation, nil
 	}
+	project := ""
+	if temporary {
+		project, err = ProjectRoot()
+		if err != nil {
+			return "", err
+		}
+	}
+	if normalized == "fish" {
+		state := "set -e RPY_ENV_SELECTION; set -e RPY_ENV_PROJECT"
+		if temporary {
+			state = fmt.Sprintf("set -gx RPY_ENV_SELECTION %s; set -gx RPY_ENV_PROJECT %s",
+				quoteShell(name, normalized), quoteShell(project, normalized))
+		}
+		return fmt.Sprintf("%s; and begin; %s; set -gx RPY_AUTO_VENV %s; true; end",
+			activation, state, quoteShell(info.Root, normalized)), nil
+	}
+	state := "unset RPY_ENV_SELECTION RPY_ENV_PROJECT"
+	if temporary {
+		state = fmt.Sprintf("export RPY_ENV_SELECTION=%s RPY_ENV_PROJECT=%s",
+			quoteShell(name, normalized), quoteShell(project, normalized))
+	}
+	return fmt.Sprintf("%s && { %s; export RPY_AUTO_VENV=%s; }",
+		activation, state, quoteShell(info.Root, normalized)), nil
+}
+
+func quoteShell(value, shell string) string {
+	if shell == "fish" {
+		return "'" + strings.NewReplacer("\\", "\\\\", "'", "\\'").Replace(value) + "'"
+	}
+	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
 }
 
 func selectionActivationInfo(selection string) (Info, string, error) {

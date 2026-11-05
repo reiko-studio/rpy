@@ -9,8 +9,9 @@ import (
 var envUseActivate bool
 
 var envUseCmd = &cobra.Command{
-	Use:   "use <name|local>",
-	Short: "Select the environment for the current project",
+	Use:        "use <name|local>",
+	Deprecated: "use env register <name> to save a selection or env activate <name> for this shell",
+	Short:      "Select the environment for the current project",
 	Long: `Select the environment for the current project.
 
 Without --activate, this persists the selection in the project.

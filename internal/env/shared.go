@@ -188,40 +188,44 @@ func currentSharedEnvName() (string, error) {
 }
 
 func currentEnvSelection() (string, bool, error) {
-	if value := strings.TrimSpace(os.Getenv(shellSelectionEnv)); value != "" {
-		if value == "local" {
-			return "", true, nil
-		}
-		name, err := validateSharedEnvName(value)
+	value := strings.TrimSpace(os.Getenv(shellSelectionEnv))
+	if project := os.Getenv("RPY_ENV_PROJECT"); project != "" {
+		root, err := ProjectRoot()
 		if err != nil {
 			return "", false, err
 		}
-		return name, false, nil
+		if project != root || os.Getenv("VIRTUAL_ENV") != os.Getenv("RPY_AUTO_VENV") {
+			value = ""
+		}
 	}
+	if value == "local" {
+		return "", true, nil
+	}
+	if value != "" {
+		name, err := validateSharedEnvName(value)
+		return name, false, err
+	}
+	name, err := registeredEnvName()
+	return name, false, err
+}
 
+func registeredEnvName() (string, error) {
 	root, err := ProjectRoot()
 	if err != nil {
-		return "", false, err
+		return "", err
 	}
-
 	data, err := os.ReadFile(filepath.Join(root, projectSelectionFile))
-	if err != nil {
-		if os.IsNotExist(err) {
-			return "", false, nil
-		}
-		return "", false, err
+	if os.IsNotExist(err) {
+		return "", nil
 	}
-
+	if err != nil {
+		return "", err
+	}
 	name := strings.TrimSpace(string(data))
 	if name == "" {
-		return "", false, nil
+		return "", nil
 	}
-
-	validated, err := validateSharedEnvName(name)
-	if err != nil {
-		return "", false, err
-	}
-	return validated, false, nil
+	return validateSharedEnvName(name)
 }
 
 func sharedEnvRoot() (string, error) {

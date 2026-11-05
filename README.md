@@ -67,17 +67,17 @@ sudo pacman -S --needed base-devel openssl zlib xz tk zstd
 
 ## Install
 
-Build from the repository root and put the binary on your `PATH`:
+Run the installer from the repository root:
 
 ```sh
-go build -o rpy .
-mkdir -p ~/.local/bin
-install -m 0755 rpy ~/.local/bin/rpy
+python3 install.py
 ```
 
-Make sure `~/.local/bin` is on your `PATH`, so you can call `rpy` from any
-project directory. The Go compiler is needed to build the binary; the resulting
-executable can then be used directly.
+The installer checks for Go, builds the binary, and installs it at
+`~/.local/bin/rpy`. Run it again after updating the source to rebuild and
+replace the binary. It checks which `rpy` your shell will find on `PATH`
+and prints the setup command if needed. The system libraries listed above
+are needed when building CPython with `rpy py install`.
 
 ## A First Environment
 
@@ -106,7 +106,7 @@ setup. You can create a named environment once, then select it for each project:
 
 ```sh
 rpy env create research --python python3
-rpy env use research
+rpy env register research
 rpy pip install numpy pandas matplotlib
 ```
 
@@ -114,13 +114,13 @@ In another project directory, select the same environment:
 
 ```sh
 cd ../other-project
-rpy env use research
+rpy env register research
 rpy run python -c "import numpy; print(numpy.__version__)"
 ```
 
 Both projects now use the packages installed in `research`. Each selection is
 saved in that project's `.rpy-env` file. To return a project to its own `.venv`,
-run `rpy env use local`; create the local environment first if it does not exist.
+run `rpy env register local`; create the local environment first if it does not exist.
 
 To keep the selection file out of version control, add it to `.gitignore`:
 
@@ -149,24 +149,31 @@ eval "$(rpy shell-init --shell zsh)"
 rpy shell-init --shell fish | source
 ```
 
-With integration loaded, `rpy env activate` updates the current shell to use
-the selected environment. Entering a project directory also activates its
-environment automatically.
+Open a new shell or reload your startup file after updating `rpy`.
+With integration loaded, entering a project activates its registered
+environment or local `.venv`.
 
 ```sh
-rpy env activate
-rpy env use research --activate
+rpy env activate                      # use the saved selection or local .venv
+rpy env activate research             # use research temporarily
+rpy env activate local                # use .venv temporarily
+rpy env register research             # save the project selection
+rpy env register research --activate  # save it and activate it now
 ```
 
-`rpy env use <name>` saves the project selection. Adding `--activate` instead
-makes a temporary selection for the current shell without writing `.rpy-env`.
+An explicit name with `activate` leaves `.rpy-env` alone. The override
+applies in the current shell while you work in that project. Run
+`rpy env activate` again to return to the project default.
 
-Without shell integration, `rpy env activate` prints an activation command.
-For a one-off activation in bash or zsh, evaluate that output:
+Without shell integration, the binary prints the activation snippet. For a
+one-off activation in Bash or Zsh, evaluate it:
 
 ```sh
-eval "$(rpy env activate)"
+eval "$(rpy env activate research)"
 ```
+
+The old `rpy env use` commands are deprecated. Replace `use <name>` with
+`register <name>`, and `use <name> --activate` with `activate <name>`.
 
 ## Python Runtimes
 

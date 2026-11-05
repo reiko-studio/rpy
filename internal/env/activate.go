@@ -8,29 +8,40 @@ import (
 	"strings"
 )
 
-func PrintActivateCommand(shell string) error {
-	info, err := requireCurrentEnv()
+func PrintActivation(name, shell string, pathOnly, current bool) error {
+	temporary := name != ""
+	var info Info
+	var err error
+	switch {
+	case name != "":
+		info, name, err = selectionActivationInfo(name)
+	case current:
+		info, err = requireCurrentEnv()
+	default:
+		name, err = registeredEnvName()
+		if err == nil {
+			if name == "" {
+				name = "local"
+			}
+			info, _, err = selectionActivationInfo(name)
+		}
+	}
 	if err != nil {
 		return err
 	}
-
-	command, err := ActivateCommand(info, shell)
-	if err != nil {
-		return err
+	if pathOnly {
+		path, err := activationScriptPathForSelection(info, shell)
+		if err != nil {
+			return err
+		}
+		fmt.Println(path)
+		return nil
 	}
-
-	fmt.Println(command)
-	return nil
-}
-
-func PrintActivationPath(shell string) error {
-	info, err := requireCurrentEnv()
-	if err != nil {
-		return err
+	command, err := selectionSnippet(info, name, shell, temporary)
+	if err == nil {
+		fmt.Println(command)
 	}
-
-	fmt.Println(activationScriptPath(info, normalizeShell(shell)))
-	return nil
+	return err
 }
 
 func ActivateCommand(info Info, shell string) (string, error) {
@@ -46,13 +57,13 @@ func ActivateCommand(info Info, shell string) (string, error) {
 
 	switch normalized {
 	case "fish":
-		return fmt.Sprintf("source %q", script), nil
+		return "source " + quoteShell(script, normalized), nil
 	case "powershell", "pwsh":
 		return fmt.Sprintf("& %q", script), nil
 	case "cmd":
 		return script, nil
 	default:
-		return fmt.Sprintf("source %q", script), nil
+		return "source " + quoteShell(script, normalized), nil
 	}
 }
 
