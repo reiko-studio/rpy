@@ -261,6 +261,29 @@ rpy pip freeze
 `rpy pip` runs `pip` through the selected environment's interpreter.
 `rpy freeze` is a shortcut for `rpy pip freeze`.
 
+## Python CLI Tools
+
+Use `rpy tool` for command-line packages you want to run from any project.
+Each package gets its own environment under `~/.rpy/tools`. Its declared
+commands are linked into `~/.local/bin`, which should be on your `PATH`.
+
+```sh
+rpy tool install black
+rpy tool install ./reicloud_sync-0.1.0-py3-none-any.whl --python python3
+rpy tool list
+rpy tool uninstall reicloud-sync
+```
+
+The package and command names can differ. For example, `reicloud-sync` can
+expose the command `reicloud`. The list shows both names, and uninstall takes
+the package name. If a declared command already exists in `~/.local/bin`,
+installation reports the conflicting path and leaves the existing command in
+place.
+
+Omit `--python` to use the default interpreter, or pass a managed version, an
+executable name on `PATH`, or a path to Python. The selected interpreter needs
+working `venv` support and pip 22.2 or newer in new virtual environments.
+
 ## Diagnostics
 
 If something is not working as expected, start with the built-in checks:
