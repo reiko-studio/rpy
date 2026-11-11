@@ -12,11 +12,13 @@ import (
 func init() {
 	group := &cobra.Command{Use: "tool", Short: "Manage Python CLI tools in isolated environments"}
 	var interpreter string
+	var additional []string
+	var extras []string
 	install := &cobra.Command{
 		Use: "install <package|wheel>", Short: "Install a Python CLI package",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			item, err := tool.Install(args[0], interpreter, cmd.ErrOrStderr())
+			item, err := tool.Install(args[0], interpreter, extras, cmd.ErrOrStderr(), additional...)
 			if err != nil {
 				return err
 			}
@@ -24,6 +26,8 @@ func init() {
 			return nil
 		},
 	}
+	install.Flags().StringArrayVar(&extras, "extra", nil, "Optional extra declared by the tool package (repeatable)")
+	install.Flags().StringArrayVar(&additional, "with", nil, "Additional package requirement or wheel to install (repeatable)")
 	install.Flags().StringVar(&interpreter, "python", "", "Python version, executable name, or path")
 	group.AddCommand(install, &cobra.Command{
 		Use: "list", Short: "List installed tool packages and their commands", Args: cobra.NoArgs,

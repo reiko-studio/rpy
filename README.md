@@ -280,6 +280,26 @@ the package name. If a declared command already exists in `~/.local/bin`,
 installation reports the conflicting path and leaves the existing command in
 place.
 
+For optional extras or companion packages, install them together in the tool's
+environment. Repeat `--with` for each additional requirement. Quote extras and
+version constraints so your shell passes them through.
+
+```sh
+rpy tool install 'package[extra]'
+rpy tool install ./mytool-1.0-py3-none-any.whl --extra cloud --extra keyring
+rpy tool install ./reicloud_sync-0.1.0-py3-none-any.whl --with keyring
+rpy tool install mytool --with 'plugin>=1.0' --with another-plugin
+```
+
+Use `--extra` for optional dependency groups declared by the primary package,
+including a local wheel. Repeat it for multiple groups. You can combine
+`--extra` with `--with` to add separate companion packages.
+
+Only the primary package's commands are exposed in `~/.local/bin`. Companion
+packages share its environment and are removed when the tool is uninstalled.
+To change an existing tool's extras, uninstall it and install it again with the
+desired options.
+
 Omit `--python` to use the default interpreter, or pass a managed version, an
 executable name on `PATH`, or a path to Python. The selected interpreter needs
 working `venv` support and pip 22.2 or newer in new virtual environments.

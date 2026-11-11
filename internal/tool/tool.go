@@ -19,13 +19,16 @@ import (
 )
 
 type Tool struct {
-	Name     string
-	Version  string
-	Commands []string
-	Env      string
+	Name       string
+	Version    string
+	Commands   []string
+	Additional []string
+	Extras     []string
+	Env        string
 }
 
 var packageName = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$`)
+var packageExtras = regexp.MustCompile(`^([A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?)\[([A-Za-z0-9._-]+)(,[A-Za-z0-9._-]+)*\]$`)
 var separators = regexp.MustCompile(`[-_.]+`)
 
 func canonical(name string) string {
@@ -55,9 +58,9 @@ func lock(root string) (*os.File, error) {
 	return file, nil
 }
 
-func Install(spec, requestedPython string, log io.Writer) (_ Tool, err error) {
-	if !packageName.MatchString(spec) && !strings.HasSuffix(spec, ".whl") {
-		return Tool{}, fmt.Errorf("expected a package name or local .whl file")
+func Install(spec, requestedPython string, extras []string, log io.Writer, additional ...string) (_ Tool, err error) {
+	if !packageName.MatchString(spec) && !packageExtras.MatchString(spec) && !strings.HasSuffix(spec, ".whl") {
+		return Tool{}, fmt.Errorf("expected a package name, package[extras], or local .whl file")
 	}
 	if strings.HasSuffix(spec, ".whl") {
 		info, err := os.Stat(spec)
@@ -70,6 +73,27 @@ func Install(spec, requestedPython string, log io.Writer) (_ Tool, err error) {
 		spec, err = filepath.Abs(spec)
 		if err != nil {
 			return Tool{}, err
+		}
+	}
+	primary := strings.SplitN(spec, "[", 2)[0]
+	if strings.HasSuffix(spec, ".whl") {
+		primary = strings.SplitN(filepath.Base(spec), "-", 2)[0]
+	}
+	for _, extra := range extras {
+		if !packageName.MatchString(extra) {
+			return Tool{}, fmt.Errorf("invalid extra name %q", extra)
+		}
+	}
+	if len(extras) > 0 {
+		if strings.HasSuffix(spec, "]") {
+			spec = strings.TrimSuffix(spec, "]") + "," + strings.Join(extras, ",") + "]"
+		} else {
+			spec += "[" + strings.Join(extras, ",") + "]"
+		}
+	}
+	for _, requirement := range additional {
+		if strings.TrimSpace(requirement) == "" || strings.HasPrefix(requirement, "-") {
+			return Tool{}, fmt.Errorf("invalid additional package %q", requirement)
 		}
 	}
 	var interpreter python.Interpreter
@@ -113,10 +137,12 @@ func Install(spec, requestedPython string, log io.Writer) (_ Tool, err error) {
 	}
 	py := filepath.Join(venv, "bin", "python")
 	report := filepath.Join(venv, "pip-report.json")
-	if err := run(log, py, "-Im", "pip", "install", "--ignore-installed", "--report", report, "--", spec); err != nil {
+	installArgs := []string{"-Im", "pip", "install", "--ignore-installed", "--report", report, "--", spec}
+	installArgs = append(installArgs, additional...)
+	if err := run(log, py, installArgs...); err != nil {
 		return Tool{}, err
 	}
-	query := exec.Command(py, "-I", "-c", inspectTool, report)
+	query := exec.Command(py, "-I", "-c", inspectTool, report, primary)
 	query.Stderr = log
 	output, err := query.Output()
 	if err != nil {
@@ -132,6 +158,8 @@ func Install(spec, requestedPython string, log io.Writer) (_ Tool, err error) {
 	if len(item.Commands) == 0 {
 		return Tool{}, fmt.Errorf("package %s declares no CLI commands", item.Name)
 	}
+	item.Extras = extras
+	item.Additional = additional
 	item.Env = filepath.Base(venv)
 	record := filepath.Join(root, canonical(item.Name)+".json")
 	if _, err := os.Lstat(record); err == nil {
@@ -180,10 +208,13 @@ func Install(spec, requestedPython string, log io.Writer) (_ Tool, err error) {
 const inspectTool = `
 import importlib.metadata as metadata
 import json
+import re
 import sys
 
 with open(sys.argv[1], encoding="utf-8") as f:
-    requested, = [item for item in json.load(f)["install"] if item["requested"]]
+    normalize = lambda name: re.sub(r"[-_.]+", "-", name).lower()
+    requested, = [item for item in json.load(f)["install"]
+                  if item["requested"] and normalize(item["metadata"]["name"]) == normalize(sys.argv[2])]
 dist = metadata.distribution(requested["metadata"]["name"])
 print(json.dumps({
     "Name": dist.metadata["Name"],
